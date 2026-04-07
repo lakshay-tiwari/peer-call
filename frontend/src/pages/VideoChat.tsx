@@ -15,6 +15,11 @@ type ChatMessage = {
   timestamp: Date;
 };
 
+type WSMessage = {
+  type: string;
+  payload: any;
+};
+
 type ConnectionStatus = "idle" | "searching" | "connected" | "disconnected";
 
 const VideoChat = () => {
@@ -36,7 +41,51 @@ const VideoChat = () => {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  // refs near your existing refs
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteStreamRef = useRef<MediaStream>(new MediaStream());
+  const roomIdRef = useRef<string | null>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+
+  const createPeerConnection = (roomId: string) => {
+    const pc = new RTCPeerConnection();
+    roomIdRef.current = roomId;
+
+    // 1) Add local tracks (this sends your camera/mic)
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => {
+        pc.addTrack(track, streamRef.current!);
+      });
+    }
+
+    // 2) Receive remote tracks
+    pc.ontrack = (event) => {
+      const [remoteStream] = event.streams;
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+      }
+    };
+
+  // 3) Send ICE candidates through WS
+    pc.onicecandidate = (event) => {
+      if (!event.candidate) return;
+      wsRef.current?.send(
+        JSON.stringify({
+          type: "webrtc:ice-candidate",
+          payload: {
+            roomId,
+            candidate: event.candidate,
+          },
+        })
+      );
+    };
+
+    pcRef.current = pc;
+    return pc;
+  };
+
+  
 
   useEffect(()=>{
     const ws = new WebSocket('ws://localhost:3000')
@@ -49,9 +98,72 @@ const VideoChat = () => {
       console.log('Websocket connection closed...');
     }
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      console.log("received data: ", data)
+    ws.onmessage = async (event) => {
+      try {
+        const { type, payload }: WSMessage = JSON.parse(event.data)
+        if (type == "waiting-for-match"){
+          setStatus("searching");
+        }
+        if (type == "match-found"){
+          const { roomId, role } = payload;
+          const pc = createPeerConnection(roomId);
+
+          if (role === "offerer"){
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            wsRef.current?.send(
+              JSON.stringify({
+                type: "webrtc:offer",
+                payload: { roomId, sdp: pc.localDescription },
+              })
+            );
+          }
+          if (role == 'answerer'){
+            console.log("you are answerer");
+          }
+
+          setStatus("connected");
+        }
+        if (type == "webrtc:offer"){
+          const { roomId, sdp } = payload;
+          if (!sdp){
+            console.error("SDP not present");
+            return;
+          }
+          const pc = pcRef.current ?? createPeerConnection(roomId);
+          await pc.setRemoteDescription
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          wsRef.current?.send(
+            JSON.stringify({
+              type: "webrtc:ice-candidate",
+              payload: { roomId, sdp: pc.localDescription }
+            })
+          )
+        }
+        if (type === "webrtc:answer"){
+          const { roomId, sdp } = payload;
+          if (!pcRef.current) return;
+          if (!sdp){
+            console.error("SDP not present");
+            return;
+          }
+          await pcRef.current.setRemoteDescription(sdp);
+        }
+        if (type == "webrtc:ice-candidate"){
+          const { roomId, candidate } = payload;
+          if (!pcRef.current) return;
+          if (!candidate){
+            console.error("Candidate not present");
+            return;
+          }
+          await pcRef.current.addIceCandidate(candidate);
+        }
+      } catch (error) {
+        console.error("Invalid message:", error);
+      }
+      
     }
 
     return ()=>{
@@ -117,15 +229,18 @@ const VideoChat = () => {
 
   const handleStart = () => {
     // here message go for creating room
-    setStatus("searching");
-    setMessages([]);
-    setStrangerImg(strangerImages[Math.floor(Math.random() * strangerImages.length)]);
-    setTimeout(() => {
-      setStatus("connected");
-      setMessages([
-        { id: "system-1", text: "You are now connected with a stranger. Say hi!", sender: "stranger", timestamp: new Date() },
-      ]);
-    }, 2000);
+    if (!wsRef.current) return;
+    wsRef.current.send(JSON.stringify({ type: "user:add" }));
+    console.log("user added");
+    
+    // setMessages([]);
+    // setStrangerImg(strangerImages[Math.floor(Math.random() * strangerImages.length)]);
+    // setTimeout(() => {
+    //   setStatus("connected");
+    //   setMessages([
+    //     { id: "system-1", text: "You are now connected with a stranger. Say hi!", sender: "stranger", timestamp: new Date() },
+    //   ]);
+    // }, 2000);
   };
 
   const handleNext = () => {
