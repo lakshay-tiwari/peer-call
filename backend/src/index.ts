@@ -2,8 +2,9 @@ import { userManger } from "./managers/userManager";
 import type { ClientWebSocket } from "./types/clientWebSocket/types";
 import type { WSMessage } from "./types/messageType/type";
 
+const port = 3000;
 Bun.serve({
-  port: 3000,
+  port: port,
   fetch(req, server) {
     // upgrade the request to a WebSocket
     if (server.upgrade(req)) {
@@ -50,3 +51,4 @@ Bun.serve({
   }, 
 });
 
+console.log(`Server running on http://localhost:${port}`);
