@@ -23,19 +23,23 @@ Bun.serve({
         return; 
       }
       
-      const { type, payload }: WSMessage = JSON.parse(message)
-
-      if (type == "user:add"){
-        userManger.addUser(ws);
-        return 
-      }
-      if (type == "webrtc:offer" || type == "webrtc:answer" || type == "webrtc:ice-candidate"){
-        userManger.messageHandler(ws,type,payload)
-        return;
-      }
-      if (type == "user:remove"){
-        userManger.removeUser(ws.userId)
-        return;
+      try {
+        const { type, payload }: WSMessage = JSON.parse(message)
+  
+        if (type == "user:add"){
+          userManger.addUser(ws);
+          return 
+        }
+        if (type == "webrtc:offer" || type == "webrtc:answer" || type == "webrtc:ice-candidate"){
+          userManger.messageHandler(ws,type,payload)
+          return;
+        }
+        if (type == "user:remove"){
+          userManger.removeUser(ws.userId)
+          return;
+        }
+      } catch (error) {
+        ws.send(JSON.stringify({ type: "invalid-message" }))
       }
     }, 
 

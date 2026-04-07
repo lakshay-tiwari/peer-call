@@ -15,34 +15,48 @@ export class RoomManager {
 
   constructor(){
     this.rooms = new Map();
-
-    setInterval(()=> {
-      console.log('rooms: ')
-      console.log(Object.fromEntries(this.rooms))
-      console.log("")
-    },5000)
   }
 
   createRoom(user1: User, user2: User){
     const roomId = this.generate();
     this.rooms.set(roomId, { user1: user1 , user2: user2 })
+
     // send to anyone websocket server to create offer and send to another
 
-    user1.socket.send(JSON.stringify({ role: "sender" , message: "create-offer", roomId: roomId }));
-    user2.socket.send(JSON.stringify({ role: "receiver", message :"wait for offer...", roomId: roomId }));
+    user1.socket.send(JSON.stringify({
+      type: "match:found",
+      payload: {
+        roomId: roomId,
+        role: "offerer"
+      }
+    }));
+    user2.socket.send(JSON.stringify({
+      type: "match:found",
+      payload: {
+        roomId: roomId,
+        role: "answerer"
+      }
+    }));
   }
 
   deleteRoom(roomId: string){
     this.rooms.delete(roomId);
   }
 
+  // send offer to the receiver
   onOffer(roomId: string, sdp: string , senderSocketId: string){
     const room = this.rooms.get(roomId);
     if (!room){
       return;
     }
-    const receiverSocket = room.user1.id === senderSocketId ? room.user2 : room.user1 ; 
-    receiverSocket.socket.send(JSON.stringify({ message: "onOffer", sdp: sdp, roomId: roomId}));
+    const receiverSocket = room.user1.id === senderSocketId ? room.user2 : room.user1 ;
+    receiverSocket.socket.send(JSON.stringify({
+      type: "webrtc:offer",
+      payload: {
+        roomId: roomId,
+        sdp: sdp
+      }
+    }));
   }
 
   onAnswer(roomId: string, sdp: string, senderSocketId: string){
@@ -51,7 +65,13 @@ export class RoomManager {
       return;
     }
     const receiverSocket = room.user1.id === senderSocketId ? room.user2 : room.user1;
-    receiverSocket.socket.send(JSON.stringify({sdp: sdp, roomId: roomId, message: "OnAnswer"}))
+    receiverSocket.socket.send(JSON.stringify({
+      type: "webrtc:answer",
+      payload: {
+        roomId: roomId,
+        sdp: sdp
+      }
+    }));
   }
   
   onIceCandidates(roomId: string, candidate: any, senderSocketId: string){
@@ -60,7 +80,13 @@ export class RoomManager {
       return;
     }
     const receiverSocket = room.user1.id === senderSocketId ? room.user2 : room.user1;
-    receiverSocket.socket.send(JSON.stringify({candidate: candidate, roomId: roomId, message: "onIceCandidate"}))
+    receiverSocket.socket.send(JSON.stringify({
+      type: "webrtc:ice-candidate",
+      payload: {
+        roomId: roomId,
+        candidate: candidate
+      }
+    }));
   }
 
   generate(){

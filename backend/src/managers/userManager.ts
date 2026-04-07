@@ -37,7 +37,7 @@ class UserManager {
     this.users.set(id,{ id: id, socket: ws })
     this.queue.push(id)
     
-    ws.send(JSON.stringify({ message: "Waiting for another User..."}))
+    ws.send(JSON.stringify({ type: "waiting-for-match" }))
 
     this.clearQueue();
 
@@ -76,7 +76,7 @@ class UserManager {
       console.log('payload')
       console.log(JSON.stringify(payload))
       if (!sdp){
-        ws.send(JSON.stringify({ messag: "sdp not sent"}))
+        ws.send(JSON.stringify({ type: "sdp-not-present" }))
         return
       }
       this.roomManger.onOffer(roomId,sdp,ws.userId)
@@ -84,7 +84,7 @@ class UserManager {
     } else if (type === "webrtc:answer"){
       const { roomId , sdp } = payload 
       if (!sdp){
-        ws.send(JSON.stringify({ messag: "sdp not sent"}))
+        ws.send(JSON.stringify({ type: "sdp-not-present" }))
         return
       }
       this.roomManger.onAnswer(roomId,sdp,ws.userId)
@@ -92,7 +92,7 @@ class UserManager {
     else if (type === "webrtc:ice-candidate"){
       const { roomId, candidate } = payload
       if (!candidate){
-        ws.send(JSON.stringify({ "message": "candidate not present" }))
+        ws.send(JSON.stringify({ type: "candidate-not-present" }))
         return;
       }
       this.roomManger.onIceCandidates(roomId,candidate,ws.userId)
